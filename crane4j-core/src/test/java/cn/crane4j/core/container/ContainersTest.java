@@ -11,42 +11,36 @@ import lombok.RequiredArgsConstructor;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.util.Collections;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
- * test for {@link ConstantContainer}
+ * test for {@link Containers}
  *
  * @author huangchengxing
  */
-public class ConstantContainerTest {
-
+public class ContainersTest {
     @Test
-    public void destroy() {
-        // map is modifiable
-        Map<String, Object> map = new HashMap<>();
-        map.put("1", new Object());
-        ConstantContainer.forMap("test", map).destroy();
-        Assert.assertTrue(map.isEmpty());
-
-        // map is unmodifiable
-        map = new HashMap<>();
-        map.put("1", new Object());
-        map = Collections.unmodifiableMap(map);
-        ConstantContainer.forMap("test", map).destroy();
-        Assert.assertFalse(map.isEmpty());
+    public void empty() {
+        Container<Object> container = Containers.empty();
+        Assert.assertSame(container, Container.empty());
+        Assert.assertEquals(Container.EMPTY_CONTAINER_NAMESPACE, container.getNamespace());
+        Assert.assertTrue(container.get(null).isEmpty());
     }
 
     @SuppressWarnings("unchecked")
     @Test
     public void forEnum() {
-        Container<String> container = ConstantContainer.forEnum(
+        Container<String> container = Containers.forEnum(
             FooEnum.class.getSimpleName(), FooEnum.class, Enum::name
         );
         Assert.assertEquals(FooEnum.class.getSimpleName(), container.getNamespace());
 
-        Map<String, FooEnum> data = (Map<String, FooEnum>)container.get(null);
+        Map<String, FooEnum> data = (Map<String, FooEnum>) container.get(null);
         Assert.assertEquals(FooEnum.ONE, data.get(FooEnum.ONE.name()));
         Assert.assertEquals(FooEnum.TWO, data.get(FooEnum.TWO.name()));
     }
@@ -54,7 +48,7 @@ public class ConstantContainerTest {
     @Test
     public void forAnnotatedEnum() {
         // annotated
-        Container<String> container = ConstantContainer.forEnum(AnnotatedEnum.class, new SimpleAnnotationFinder(), new ReflectivePropertyOperator(new HutoolConverterManager()));
+        Container<String> container = Containers.forEnum(AnnotatedEnum.class, new SimpleAnnotationFinder(), new ReflectivePropertyOperator(new HutoolConverterManager()));
         Assert.assertEquals(AnnotatedEnum.class.getSimpleName(), container.getNamespace());
         Map<?, ?> data = container.get(null);
         Assert.assertEquals(AnnotatedEnum.ONE.getValue(), data.get(AnnotatedEnum.ONE.getKey()));
@@ -62,7 +56,7 @@ public class ConstantContainerTest {
 
         // no annotated
         PropertyOperator propertyOperator = new ReflectivePropertyOperator(new HutoolConverterManager());
-        container = ConstantContainer.forEnum(FooEnum.class, new SimpleAnnotationFinder(), propertyOperator);
+        container = Containers.forEnum(FooEnum.class, new SimpleAnnotationFinder(), propertyOperator);
         Assert.assertEquals(FooEnum.class.getSimpleName(), container.getNamespace());
         data = container.get(null);
         Assert.assertEquals(FooEnum.ONE, data.get(FooEnum.ONE.name()));
@@ -72,10 +66,10 @@ public class ConstantContainerTest {
     @SuppressWarnings("unchecked")
     @Test
     public void forAnnotatedEnumWhenDefault() {
-        Container<String> container = ConstantContainer.forEnum(DefaultAnnotatedEnum.class, new SimpleAnnotationFinder(), new ReflectivePropertyOperator(new HutoolConverterManager()));
+        Container<String> container = Containers.forEnum(DefaultAnnotatedEnum.class, new SimpleAnnotationFinder(), new ReflectivePropertyOperator(new HutoolConverterManager()));
         Assert.assertEquals(DefaultAnnotatedEnum.class.getSimpleName(), container.getNamespace());
 
-        Map<String, DefaultAnnotatedEnum> data = (Map<String, DefaultAnnotatedEnum>)container.get(null);
+        Map<String, DefaultAnnotatedEnum> data = (Map<String, DefaultAnnotatedEnum>) container.get(null);
         Assert.assertEquals(DefaultAnnotatedEnum.ONE, data.get(DefaultAnnotatedEnum.ONE.name()));
         Assert.assertEquals(DefaultAnnotatedEnum.TWO, data.get(DefaultAnnotatedEnum.TWO.name()));
     }
@@ -86,14 +80,14 @@ public class ConstantContainerTest {
         map.put("1", new Object());
         map.put("2", 2);
         String namespace = "map";
-        Container<String> container = ConstantContainer.forMap(namespace, map);
+        Container<String> container = Containers.forMap(namespace, map);
         Assert.assertEquals(namespace, container.getNamespace());
         Assert.assertSame(map, container.get(null));
     }
 
     @Test
     public void forConstantClass() {
-        ConstantContainer<?> container1 = ConstantContainer.forConstantClass(
+        Container<?> container1 = Containers.forConstantClass(
             FooConstant1.class, new SimpleAnnotationFinder()
         );
         Assert.assertEquals("foo", container1.getNamespace());
@@ -104,7 +98,7 @@ public class ConstantContainerTest {
         Assert.assertEquals("three", sources1.get("THREE"));
         Assert.assertFalse(sources1.containsKey("two"));
 
-        ConstantContainer<?> container2 = ConstantContainer.forConstantClass(
+        Container<?> container2 = Containers.forConstantClass(
             FooConstant2.class, new SimpleAnnotationFinder()
         );
         Assert.assertEquals(FooConstant2.class.getSimpleName(), container2.getNamespace());
@@ -115,7 +109,7 @@ public class ConstantContainerTest {
         Assert.assertEquals("three", sources2.get("THREE"));
         Assert.assertFalse(sources2.containsKey("two"));
 
-        ConstantContainer<?> container3 = ConstantContainer.forConstantClass(
+        Container<?> container3 = Containers.forConstantClass(
             FooConstant3.class, new SimpleAnnotationFinder()
         );
         Assert.assertEquals(FooConstant3.class.getSimpleName(), container3.getNamespace());
@@ -125,6 +119,20 @@ public class ConstantContainerTest {
         Assert.assertTrue(sources3.containsKey("three"));
         Assert.assertEquals("THREE", sources3.get("three"));
         Assert.assertFalse(sources3.containsKey("two"));
+    }
+
+    @Test
+    public void forLambda() {
+        String namespace = "lambda";
+        Container<String> container = Containers.forLambda(namespace, ContainersTest::getData);
+        Assert.assertEquals(namespace, container.getNamespace());
+        Map<String, ?> data = container.get(Arrays.asList("1", "2"));
+        Assert.assertEquals("1", data.get("1"));
+        Assert.assertEquals("2", data.get("2"));
+    }
+
+    private static Map<String, Object> getData(Collection<String> keys) {
+        return keys.stream().collect(Collectors.toMap(Function.identity(), Function.identity()));
     }
 
     @Getter
@@ -147,7 +155,6 @@ public class ConstantContainerTest {
         private final int key;
         private final String value;
     }
-
 
     @SuppressWarnings("unused")
     @ContainerConstant(namespace = "foo")
